@@ -267,7 +267,7 @@ OPA API is a product developed by [OverPowersAgency](https://www.facebook.com/ov
 ---
 
 <p align="center">
-  <strong>Built with ❤️ by <a href="https://opa.vn">OPA AI Labs</a></strong>
+  <strong>Built with ❤️ by <a href="https://www.opa.business/">OPA AI Labs</a></strong>
 </p>
 
 <p align="center">
