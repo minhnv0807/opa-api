@@ -262,7 +262,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Credits
 
-OPA API is a fork of [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) by router-for-me, rebranded and localized for the Vietnamese developer community.
+OPA API is a product developed by [OverPowersAgency](https://www.facebook.com/overpowers.agency), localized for the Vietnamese developer community. 
 
 ---
 
@@ -271,7 +271,7 @@ OPA API is a fork of [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
 </p>
 
 <p align="center">
-  <a href="https://facebook.com/opavietnam">Facebook</a> •
-  <a href="https://t.me/opa_ai_labs">Telegram</a> •
-  <a href="mailto:hello@opa.vn">Contact</a>
+  <a href="https://www.facebook.com/overpowers.agency">Facebook</a> •
+  <a href="https://t.me/opagency">Telegram</a> •
+  <a href="overpowersagency@gmail.com">Contact</a>
 </p>
