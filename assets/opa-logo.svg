@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120">
+  <defs>
+    <linearGradient id="opaGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0066FF"/>
+      <stop offset="100%" style="stop-color:#00D4FF"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="400" height="120" fill="#0a0a0a" rx="12"/>
+  
+  <!-- OPA Text -->
+  <text x="30" y="78" font-family="Arial Black, sans-serif" font-size="56" font-weight="900" fill="url(#opaGradient)" filter="url(#glow)">OPA</text>
+  
+  <!-- API Badge -->
+  <rect x="175" y="40" width="80" height="40" rx="8" fill="url(#opaGradient)"/>
+  <text x="215" y="68" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#0a0a0a" text-anchor="middle">API</text>
+  
+  <!-- Decorative elements -->
+  <circle cx="280" cy="60" r="4" fill="#0066FF" opacity="0.5"/>
+  <circle cx="300" cy="50" r="3" fill="#00D4FF" opacity="0.7"/>
+  <circle cx="320" cy="70" r="5" fill="#0066FF" opacity="0.6"/>
+  
+  <!-- Connection lines -->
+  <path d="M270 60 Q290 40 310 60 Q330 80 350 55" stroke="url(#opaGradient)" stroke-width="2" fill="none" opacity="0.4"/>
+  
+  <!-- Tagline -->
+  <text x="30" y="105" font-family="Arial, sans-serif" font-size="12" fill="#666">Universal AI CLI Proxy Server</text>
+</svg>
