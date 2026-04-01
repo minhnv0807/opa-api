@@ -317,7 +317,10 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 // setupRoutes configures the API routes for the server.
 // It defines the endpoints and associates them with their respective handlers.
 func (s *Server) setupRoutes() {
-	s.engine.GET("/management.html", s.serveManagementControlPanel)
+	s.engine.GET("/management.html", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, "/management/")
+	})
+	s.engine.GET("/management/*filepath", s.serveManagementSPA)
 	openaiHandlers := openai.NewOpenAIAPIHandler(s.handlers)
 	geminiHandlers := gemini.NewGeminiAPIHandler(s.handlers)
 	geminiCLIHandlers := gemini.NewGeminiCLIAPIHandler(s.handlers)
@@ -653,34 +656,58 @@ func (s *Server) managementAvailabilityMiddleware() gin.HandlerFunc {
 	}
 }
 
-func (s *Server) serveManagementControlPanel(c *gin.Context) {
+func (s *Server) serveManagementSPA(c *gin.Context) {
 	cfg := s.cfg
 	if cfg == nil || cfg.RemoteManagement.DisableControlPanel {
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
-	filePath := managementasset.FilePath(s.configFilePath)
-	if strings.TrimSpace(filePath) == "" {
+
+	staticDir := managementasset.StaticDir(s.configFilePath)
+	if strings.TrimSpace(staticDir) == "" {
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
 
-	if _, err := os.Stat(filePath); err != nil {
+	managementDir := filepath.Join(staticDir, "management")
+	indexPath := filepath.Join(managementDir, "index.html")
+
+	// Ensure the panel is downloaded.
+	if _, err := os.Stat(indexPath); err != nil {
 		if os.IsNotExist(err) {
-			// Synchronously ensure management.html is available with a detached context.
-			// Control panel bootstrap should not be canceled by client disconnects.
-			if !managementasset.EnsureLatestManagementHTML(context.Background(), managementasset.StaticDir(s.configFilePath), cfg.ProxyURL, cfg.RemoteManagement.PanelGitHubRepository) {
+			if !managementasset.EnsureLatestManagementHTML(context.Background(), staticDir, cfg.ProxyURL, cfg.RemoteManagement.PanelGitHubRepository) {
 				c.AbortWithStatus(http.StatusNotFound)
 				return
 			}
 		} else {
-			log.WithError(err).Error("failed to stat management control panel asset")
+			log.WithError(err).Error("failed to stat management panel directory")
 			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
 	}
 
-	c.File(filePath)
+	// Resolve requested file path.
+	reqPath := strings.TrimPrefix(c.Param("filepath"), "/")
+	if reqPath == "" {
+		reqPath = "index.html"
+	}
+
+	filePath := filepath.Join(managementDir, filepath.FromSlash(reqPath))
+
+	// Prevent directory traversal.
+	if !strings.HasPrefix(filepath.Clean(filePath), filepath.Clean(managementDir)) {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	// If the requested file exists, serve it.
+	if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
+		c.File(filePath)
+		return
+	}
+
+	// SPA fallback: serve index.html for client-side routing.
+	c.File(indexPath)
 }
 
 func (s *Server) enableKeepAlive(timeout time.Duration, onTimeout func()) {
