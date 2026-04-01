@@ -1,6 +1,8 @@
 package managementasset
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -25,16 +27,17 @@ import (
 )
 
 const (
-	defaultManagementReleaseURL  = "https://api.github.com/repos/router-for-me/Cli-Proxy-API-Management-Center/releases/latest"
+	defaultManagementReleaseURL  = "https://api.github.com/repos/minhnv0807/opa-management-panel/releases/latest"
 	defaultManagementFallbackURL = "https://cpamc.router-for.me/"
-	managementAssetName          = "management.html"
+	managementAssetName          = "management-panel.zip"
+	managementIndexFile          = "index.html"
 	httpUserAgent                = "OPA API-management-updater"
 	managementSyncMinInterval    = 30 * time.Second
 	updateCheckInterval          = 3 * time.Hour
 )
 
 // ManagementFileName exposes the control panel asset filename.
-const ManagementFileName = managementAssetName
+const ManagementFileName = managementIndexFile
 
 var (
 	lastUpdateCheckMu   sync.Mutex
@@ -155,25 +158,21 @@ func StaticDir(configFilePath string) string {
 	return filepath.Join(base, "static")
 }
 
-// FilePath resolves the absolute path to the management control panel asset.
+// FilePath resolves the absolute path to the management control panel index file.
 func FilePath(configFilePath string) string {
 	if override := strings.TrimSpace(os.Getenv("MANAGEMENT_STATIC_PATH")); override != "" {
 		cleaned := filepath.Clean(override)
-		if strings.EqualFold(filepath.Base(cleaned), managementAssetName) {
-			return cleaned
-		}
-		return filepath.Join(cleaned, ManagementFileName)
+		return filepath.Join(cleaned, "management", managementIndexFile)
 	}
 
 	dir := StaticDir(configFilePath)
 	if dir == "" {
 		return ""
 	}
-	return filepath.Join(dir, ManagementFileName)
+	return filepath.Join(dir, "management", managementIndexFile)
 }
 
-// EnsureLatestManagementHTML checks the latest management.html asset and updates the local copy when needed.
-// It coalesces concurrent sync attempts and returns whether the asset exists after the sync attempt.
+// EnsureLatestManagementHTML checks the latest management panel asset and updates the local copy when needed.
 func EnsureLatestManagementHTML(ctx context.Context, staticDir string, proxyURL string, panelRepository string) bool {
 	if ctx == nil {
 		ctx = context.Background()
@@ -184,9 +183,11 @@ func EnsureLatestManagementHTML(ctx context.Context, staticDir string, proxyURL 
 		log.Debug("management asset sync skipped: empty static directory")
 		return false
 	}
-	localPath := filepath.Join(staticDir, managementAssetName)
 
-	_, _, _ = sfGroup.Do(localPath, func() (interface{}, error) {
+	managementDir := filepath.Join(staticDir, "management")
+	localIndex := filepath.Join(managementDir, managementIndexFile)
+
+	_, _, _ = sfGroup.Do(localIndex, func() (interface{}, error) {
 		lastUpdateCheckMu.Lock()
 		now := time.Now()
 		timeSinceLastAttempt := now.Sub(lastUpdateCheckTime)
@@ -203,7 +204,7 @@ func EnsureLatestManagementHTML(ctx context.Context, staticDir string, proxyURL 
 		lastUpdateCheckMu.Unlock()
 
 		localFileMissing := false
-		if _, errStat := os.Stat(localPath); errStat != nil {
+		if _, errStat := os.Stat(localIndex); errStat != nil {
 			if errors.Is(errStat, os.ErrNotExist) {
 				localFileMissing = true
 			} else {
@@ -211,27 +212,26 @@ func EnsureLatestManagementHTML(ctx context.Context, staticDir string, proxyURL 
 			}
 		}
 
-		if errMkdirAll := os.MkdirAll(staticDir, 0o755); errMkdirAll != nil {
-			log.WithError(errMkdirAll).Warn("failed to prepare static directory for management asset")
+		if errMkdirAll := os.MkdirAll(managementDir, 0o755); errMkdirAll != nil {
+			log.WithError(errMkdirAll).Warn("failed to prepare management directory")
 			return nil, nil
+		}
+
+		// Use a hash file to track the current version.
+		hashFilePath := filepath.Join(managementDir, ".hash")
+		localHash := ""
+		if hashData, readErr := os.ReadFile(hashFilePath); readErr == nil {
+			localHash = strings.TrimSpace(string(hashData))
 		}
 
 		releaseURL := resolveReleaseURL(panelRepository)
 		client := newHTTPClient(proxyURL)
 
-		localHash, err := fileSHA256(localPath)
-		if err != nil {
-			if !errors.Is(err, os.ErrNotExist) {
-				log.WithError(err).Debug("failed to read local management asset hash")
-			}
-			localHash = ""
-		}
-
 		asset, remoteHash, err := fetchLatestAsset(ctx, client, releaseURL)
 		if err != nil {
 			if localFileMissing {
 				log.WithError(err).Warn("failed to fetch latest management release information, trying fallback page")
-				if ensureFallbackManagementHTML(ctx, client, localPath) {
+				if ensureFallbackManagementHTML(ctx, client, filepath.Join(managementDir, managementIndexFile)) {
 					return nil, nil
 				}
 				return nil, nil
@@ -249,7 +249,7 @@ func EnsureLatestManagementHTML(ctx context.Context, staticDir string, proxyURL 
 		if err != nil {
 			if localFileMissing {
 				log.WithError(err).Warn("failed to download management asset, trying fallback page")
-				if ensureFallbackManagementHTML(ctx, client, localPath) {
+				if ensureFallbackManagementHTML(ctx, client, filepath.Join(managementDir, managementIndexFile)) {
 					return nil, nil
 				}
 				return nil, nil
@@ -262,16 +262,22 @@ func EnsureLatestManagementHTML(ctx context.Context, staticDir string, proxyURL 
 			log.Warnf("remote digest mismatch for management asset: expected %s got %s", remoteHash, downloadedHash)
 		}
 
-		if err = atomicWriteFile(localPath, data); err != nil {
-			log.WithError(err).Warn("failed to update management asset on disk")
+		// Extract zip to management directory.
+		if err = extractZip(data, managementDir); err != nil {
+			log.WithError(err).Warn("failed to extract management panel zip")
 			return nil, nil
 		}
 
-		log.Infof("management asset updated successfully (hash=%s)", downloadedHash)
+		// Write hash file for future comparison.
+		if err = os.WriteFile(hashFilePath, []byte(downloadedHash), 0o644); err != nil {
+			log.WithError(err).Warn("failed to write management asset hash file")
+		}
+
+		log.Infof("management panel updated successfully (hash=%s)", downloadedHash)
 		return nil, nil
 	})
 
-	_, err := os.Stat(localPath)
+	_, err := os.Stat(localIndex)
 	return err == nil
 }
 
@@ -444,6 +450,82 @@ func atomicWriteFile(path string, data []byte) error {
 
 	if err = os.Rename(tmpName, path); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// extractZip extracts a zip archive from data into destDir, removing any single
+// top-level directory wrapper (e.g. "out/" from Next.js export).
+func extractZip(data []byte, destDir string) error {
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return fmt.Errorf("open zip: %w", err)
+	}
+
+	// Detect single top-level directory wrapper.
+	prefix := ""
+	if len(reader.File) > 0 {
+		first := reader.File[0]
+		if first.FileInfo().IsDir() {
+			candidate := first.Name
+			allMatch := true
+			for _, f := range reader.File[1:] {
+				if !strings.HasPrefix(f.Name, candidate) {
+					allMatch = false
+					break
+				}
+			}
+			if allMatch {
+				prefix = candidate
+			}
+		}
+	}
+
+	for _, f := range reader.File {
+		name := f.Name
+		if prefix != "" {
+			name = strings.TrimPrefix(name, prefix)
+		}
+		if name == "" {
+			continue
+		}
+
+		targetPath := filepath.Join(destDir, filepath.FromSlash(name))
+
+		// Prevent zip slip.
+		if !strings.HasPrefix(filepath.Clean(targetPath), filepath.Clean(destDir)+string(os.PathSeparator)) {
+			continue
+		}
+
+		if f.FileInfo().IsDir() {
+			if mkErr := os.MkdirAll(targetPath, 0o755); mkErr != nil {
+				return fmt.Errorf("mkdir %s: %w", name, mkErr)
+			}
+			continue
+		}
+
+		if mkErr := os.MkdirAll(filepath.Dir(targetPath), 0o755); mkErr != nil {
+			return fmt.Errorf("mkdir parent %s: %w", name, mkErr)
+		}
+
+		rc, openErr := f.Open()
+		if openErr != nil {
+			return fmt.Errorf("open %s: %w", name, openErr)
+		}
+
+		outFile, createErr := os.Create(targetPath)
+		if createErr != nil {
+			_ = rc.Close()
+			return fmt.Errorf("create %s: %w", name, createErr)
+		}
+
+		_, copyErr := io.Copy(outFile, rc)
+		_ = rc.Close()
+		_ = outFile.Close()
+		if copyErr != nil {
+			return fmt.Errorf("copy %s: %w", name, copyErr)
+		}
 	}
 
 	return nil
