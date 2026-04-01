@@ -320,6 +320,9 @@ func (s *Server) setupRoutes() {
 	s.engine.GET("/management.html", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "/management/")
 	})
+	s.engine.GET("/management", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, "/management/")
+	})
 	s.engine.GET("/management/*filepath", s.serveManagementSPA)
 	openaiHandlers := openai.NewOpenAIAPIHandler(s.handlers)
 	geminiHandlers := gemini.NewGeminiAPIHandler(s.handlers)
