@@ -701,9 +701,17 @@ func (s *Server) serveManagementSPA(c *gin.Context) {
 	}
 
 	// If the requested file exists, serve it.
-	if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
-		c.File(filePath)
-		return
+	if info, err := os.Stat(filePath); err == nil {
+		if !info.IsDir() {
+			c.File(filePath)
+			return
+		}
+		// Directory: try serving index.html inside it.
+		dirIndex := filepath.Join(filePath, "index.html")
+		if fi, dirErr := os.Stat(dirIndex); dirErr == nil && !fi.IsDir() {
+			c.File(dirIndex)
+			return
+		}
 	}
 
 	// SPA fallback: serve index.html for client-side routing.
