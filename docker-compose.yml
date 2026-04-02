@@ -1,6 +1,6 @@
 services:
   opa-api:
-    image: ${OPA_API_IMAGE:-opa-ai-labs/opa-api:latest}
+    image: ${OPA_API_IMAGE:-ghcr.io/minhnv0807/opa-api:latest}
     pull_policy: always
     build:
       context: .
