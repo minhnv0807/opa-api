@@ -464,6 +464,9 @@ func extractZip(data []byte, destDir string) error {
 	}
 
 	// Detect single top-level directory wrapper.
+	// Some zip tools include an explicit directory entry (e.g. "management/"),
+	// while others only contain files (e.g. "management/index.html").
+	// Handle both cases by also checking for a common path prefix.
 	prefix := ""
 	if len(reader.File) > 0 {
 		first := reader.File[0]
@@ -478,6 +481,24 @@ func extractZip(data []byte, destDir string) error {
 			}
 			if allMatch {
 				prefix = candidate
+			}
+		}
+		// Fallback: if no explicit directory entry was detected, check whether
+		// all entries share a common top-level directory prefix (e.g. "management/file.txt").
+		if prefix == "" {
+			firstSlash := strings.IndexByte(first.Name, '/')
+			if firstSlash > 0 {
+				candidate := first.Name[:firstSlash+1] // e.g. "management/"
+				allMatch := true
+				for _, f := range reader.File[1:] {
+					if !strings.HasPrefix(f.Name, candidate) {
+						allMatch = false
+						break
+					}
+				}
+				if allMatch {
+					prefix = candidate
+				}
 			}
 		}
 	}
